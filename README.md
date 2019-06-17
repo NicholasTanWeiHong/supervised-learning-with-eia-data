@@ -7,7 +7,7 @@ The following project involves training Machine Learning models (using the caret
 Specifically, this project examines if there is a predictive relationship between fundamental supply and demand data for Crude Oil and the price of U.S. Crude benchmarks such as West Texas Intermediate Oil.
 
 <p align="center">
-  <img src="https://github.com/NicholasTanWeiHong/energy-forecasting-in-r/blob/master/images/energy-forecasting-in-r.png?raw=true" alt="Boxplots"/>
+  <img src="https://github.com/NicholasTanWeiHong/supervised-learning-with-eia-data/blob/master/images/rf%20perf.png?raw=true" alt="Performance"/>
 </p>
 
 ## Usage
