@@ -1,0 +1,310 @@
+---
+title: "Supervised Learning with EIA Data"
+output: html_notebook
+---
+
+The following is a simple machine learning project that leverages on the ['caret'](http://topepo.github.io/caret/index.html) package in R and fundamental supply and demand data from the U.S. EIA to explore numerical relationships in energy markets.
+
+The objective will be to explore if fundamental variables such as U.S. Oil Production and Consumption have a meaningful predictive relationship with the prices of U.S. Crude Oil benchmarks such as West Texas Intermediate Crude.
+
+### 1. Import Libraries
+```{r}
+# Import all required libraries
+library(broom)
+library(caret)
+library(knitr)
+library(PerformanceAnalytics)
+library(Quandl)
+library(sigr)
+library(tidyverse)
+```
+```{r}
+# Import data from the EIA Database in Quandl
+wti <- Quandl(code = "CHRIS/ICE_T1", type = "xts")  # West Texas Intermediate Traded Prices
+inv <- Quandl(code = "EIA/STEO_COSXPUS_M", type = "xts")  # U.S. Crude Oil Inventories
+prod <- Quandl(code = "EIA/STEO_COPRPUS_M", type = "xts")  # U.S. Crude Oil Production
+impts <- Quandl(code = "EIA/PET_MCEIMUS1_M", type = "xts")  # U.S. Crude Oil Imports
+refy <- Quandl(code = "EIA/PET_MOPUEUS2_M", type = "xts")  # U.S. Refinery Percent Utilization Rates
+cons <- Quandl(code = "EIA/STEO_TETCFUEL_M", type = "xts")  # U.S. Total Energy Consumption
+gdp <- Quandl(code = "EIA/STEO_GDPQXUS_PCT_M", type = "xts")  # U.S. Real GDP
+
+# Examine the structure of the 'wti' xts object
+str(wti)
+head(wti)
+tail(wti)
+
+```
+
+Quandl Data on WTI Traded Futures roughly extends from Feb 2006 to Jun 2019.
+
+### 2. Basic Exploratory Data Analysis
+```{r}
+# Plot a time series chart of West Texas Intermediate Closing Prices from 2006 to 2019
+ggplot(data = wti, mapping = aes(x= index(wti), y = Settle)) +
+  geom_line() +
+  labs(title = "West Texas Intermediate Crude Oil Prices", subtitle = "From 2006-02-03 to 2019-06-14") +
+  xlab("Date") +
+  ylab("Price")
+```
+
+The price series of WTI Crude Oil broadly reflects trends in energy markets: a large rally and decline post-GFC, mean-reverting markets between 2010 and 2015, the infamous collapse to ~$30/bbl in Q1 2016 and associaated volatility between 2018 and 2019.
+
+```{r}
+# Examine the structure of the 'prod' xts object
+str(prod)
+head(prod)
+tail(prod)
+```
+```{r}
+names(prod) <- "Production"
+
+ggplot(data = prod, mapping = aes(x = index(prod), y = Production)) +
+  geom_line() +
+  labs(title = "U.S. Crude Oil Production, Monthly") +
+  xlab("Date") +
+  ylab("Production in Million Barrels Per Day")
+
+```
+
+A quick analaysis of the time series plot of U.S. Crude Oil Production highlights a number of interesting features: amongst them, the sharp increase in monthly production numbers after 2010 - a likely effect of the U.S. Shale Revolution, a dramatic increase in "tight oil" supplies owing to fracking and horizontal drilling.
+
+```{r}
+# Examine the structure of the 'refy' xts object
+str(refy)
+head(refy)
+tail(refy)
+```
+```{r}
+names(refy) <- "Utilization"
+
+ggplot(data = refy, mapping = aes(x = index(refy), y = Utilization)) +
+  geom_line() +
+  labs(title = "U.S. Percent Utilization of Refinery Operable Capacity") +
+  xlab("Date") +
+  ylab("Percent Utilization in %")
+```
+
+One of the more interesting patterns in the energy market is the presence of seasonality in refinery utilization rates: utilization rates sharply increase in the summer driving months owing to increased motor gasoline demand. Conversely, run rates tend to decrease in the fall owing to turnarounds and weaker product demand.
+
+### 3. Data Preprocessing
+```{r}
+# Convert the daily WTI time series to a monthly time series on 'Settle'
+wti_monthly <- to.monthly(wti$Settle)
+
+# Examine the monthly WTI xts object
+str(wti_monthly)
+head(wti_monthly)
+tail(wti_monthly)
+```
+```{r}
+# Combine all time series into a single object for analysis
+oil <- merge(wti_monthly, inv, prod, impts, refy, cons, gdp)
+
+# Drop the Open, High, Low columns from oil
+oil <- oil[, -c(1, 2, 3)]
+
+# Filter to a subset with available data on all variables
+oil <- oil["2006-02/2019-03"]
+
+# Rename columns
+names(oil) <- c("price", "inv", "prod", "impts", "util", "cons", "gdp")
+
+# Conver the xts object to a data.frame
+oil <- as.data.frame(oil)
+
+# Examine the oil data.frame object
+str(oil)
+head(oil)
+tail(oil)
+```
+
+### 4. Univariate Linear Regression
+```{r}
+# Explore Linear Regression with one variable: Production
+fmla_lm <- as.formula("price ~ prod")
+
+# Train a Linear Regression model
+model_lm <- lm(formula = fmla_lm, data = oil)
+
+# Examine the results of the model fit
+summary(model_lm)
+glance(model_lm)
+wrapFTest(model_lm)
+```
+
+A quick regression exercise with the lm() function shows that predicting WTI prices with just U.S. Production numbers leads to a mere R-Squared Value of ~0.18. (Roughly 18% of the variance in WTI prices is explained by the linear model)
+
+The coefficient on the 'prod' variable is, however, highly significant with a p-value of 1.8e-08. This suggests that there may be some predictive value in analyzing U.S. Crude Oil Production numbers.
+
+
+```{r}
+# Visualize a linear model between price and prod
+oil$pred <- predict(model_lm)
+
+# Plot the Actual Prices against the Model's Predicted Prices
+ggplot(data = oil, mapping = aes(x = pred, y = price)) +
+  geom_point() +
+  geom_abline(color = "darkblue") +
+  labs(title = "Predicted WTI Price versus Actual WTI Price", subtitle = "In-Sample Predictions") +
+  xlab("Predicted Price") +
+  ylab("Actual Price")
+
+# Remove the predictions from the univariate linear model
+oil <- oil %>% select(-pred)
+```
+
+Plotting the Actual Prices against Model Predicted Price shows a roughly-poor fit. In the next step, we attempt to add more potentially-meaningful variables to the linear model and re-assess the predictive performance.
+
+### 5. Train-Test Split
+```{r}
+# Set seed to 42 to replicate randomized results
+set.seed(42)
+
+# Shuffle the rows of the data.frame
+permuted_rows <- sample(nrow(oil))
+shuffled_oil <- oil[permuted_rows, ]
+
+# Implement a split at 80%/20% of data
+split <- round(nrow(shuffled_oil) * 0.80)
+
+# Training Data defined as rows prior to 80%
+oil_train <- shuffled_oil[1:split, ]
+
+# Testing Data defined as rows after 80%
+oil_test <- shuffled_oil[(split + 1):nrow(shuffled_oil), ]
+
+# Examine both the training and testing datasets
+str(oil_train)
+str(oil_test)
+```
+
+### 6. Standardisation of Training Folds
+```{r}
+# Create a 5-fold object
+myFolds <- createFolds(oil_train$price, k = 5)
+
+# Define a standardized trainControl object for caret::train()
+myControl <- trainControl(savePredictions = TRUE, index = myFolds)
+
+```
+
+### 7. Training with a glmnet model
+
+The first model that we will attempt to train the data on is a "glmnet" model. Roughly speaking, this stands for "Generalized Linear Model" with penalties for the number of non-zero coefficients and/or the absolute magnitude of coefficients.
+
+We will train the model on all 6 predictor variables whilst iterating with a Grid Search object that optimizes for the alpha and lambda parameters of the model.
+
+```{r}
+# Create a Grid Search object for the glmnet Linear Regression model
+myGrid <- expand.grid(alpha = 0:1, lambda = seq(0.0001, 0.1, length = 10))
+
+# Train a glmnet model on the training dataset
+model_glmnet <- train(
+  price ~ ., 
+  data = oil_train, 
+  method = "glmnet",
+  tuneGrid = myGrid,
+  trControl = myControl,
+  preProcess = c("medianImpute", "center", "scale", "pca")
+)
+
+# Return a summary of the glmnet_model
+print(model_glmnet)
+summary(model_glmnet)
+```
+```{r}
+# Visualize the results of the glmnet model
+plot(model_glmnet, metric = "Rsquared")
+
+plot(model_glmnet$finalModel)
+```
+
+R-Squared performance appears to increase as we increase the Regularization Parameter (lambda). At the same time, an alpha parameter of 1 is preferred to 0.
+
+```{r}
+# Generate predictions for the testing dataset with predict()
+oil_test$pred_glmnet <- predict(model_glmnet, oil_test)
+
+# Visualize the results of the predictive modelling
+ggplot(data = oil_test, mapping = aes(x = pred_glmnet, y = price)) +
+  geom_point() +
+  geom_abline(color = "darkblue") +
+  labs(title = "Actual WTI Prices vs. Predicted WTI Prices by glmnet Model", subtitle = "Out-of-sample Predictions") +
+  xlab("glmnet Predicted WTI Prices") +
+  ylab("Actual WTI Prices")
+```
+
+Analysis of the plot of Actual Prices against Predicted Prices shows a much better fit relative to the first-stage univariate regression model. The glmnet model returns an R-Squared value of ~0.47, which is better than the first model but stands to be improved.
+
+In the next stage, we will attempt to train a Random Forest model on the training data to see if predictive performance improves.
+
+### 8. Training with a Random Forest Model
+```{r}
+# Train a Random Forest model on the oil_train dataset
+model_rf <- train(
+  price ~ .,
+  data = oil_train,
+  method = "ranger",
+  trControl = myControl,
+)
+
+# Return a summary of the model_rf object
+print(model_rf)
+summary(model_rf)
+```
+
+We see that the Random Forest model performs slightly better than the glmnet model, with Rsquared up to ~0.60 with mtry = 6.
+
+```{r}
+# Generate predictions for the testing dataset with predict()
+oil_test$pred_rf <- predict(model_rf, oil_test)
+
+# Visualize the results of the predictive modelling
+ggplot(data = oil_test, mapping = aes(x = pred_rf, y = price)) +
+  geom_point() +
+  geom_abline(color = "darkblue") +
+  labs(title = "Actual WTI Prices vs. Predicted WTI Prices by Random Forest Model", subtitle = "Out-of-sample Predictions") +
+  xlab("Random Forest Predicted WTI Prices") +
+  ylab("Actual WTI Prices")
+```
+
+### 9. Evaluating the Performance of Multiple Models
+```{r}
+# Create a list of trained models: model_list
+model_list <- list(glmnet = model_glmnet, rf = model_rf)
+
+# Use caret::resampels() to generate evaluative statistics for each model
+resamps <- resamples(model_list)
+
+# Print the resamples object
+print(resamps)
+
+```
+```{r}
+# Print a summary of the resamples object
+summary(resamps)
+```
+```{r}
+bwplot(resamps, metric = "Rsquared")
+```
+```{r}
+dotplot(resamps, metric = "Rsquared")
+```
+```{r}
+densityplot(resamps, metric = "Rsquared")
+```
+```{r}
+xyplot(resamps, metric = "Rsquared")
+```
+
+### 10. Final Conclusions
+Using R-Squared as an evaluation parameter, the Random Forest model appears to perform quite well with a median R-Squared value of 0.60, compared to the Linear Regression model with 0.47. This roughly suggests that the Random Forest ensemble method is able to explain 60% of the variance in WTI Contract Prices given features that encompass fundamental factors such as Production, Consumption and GDP.
+
+Further research into the literature on energy markets may be possible with respect to factors that are salient fro the prediction of Crude Oil Prices. Future implementations could include expanding the feature space to more than 6 variables to derive better prediction performance.
+
+```{r}
+purl("supervised-learning-with-eia-data.Rmd")
+```
+
+
+
