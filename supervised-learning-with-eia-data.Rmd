@@ -1,6 +1,6 @@
 ---
 title: "Supervised Learning with EIA Data"
-output: html_notebook
+output: rmarkdown::github_document
 ---
 
 The following is a simple machine learning project that leverages on the ['caret'](http://topepo.github.io/caret/index.html) package in R and fundamental supply and demand data from the U.S. EIA to explore numerical relationships in energy markets.

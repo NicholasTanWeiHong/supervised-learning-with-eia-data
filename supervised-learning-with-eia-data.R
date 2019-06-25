@@ -8,9 +8,7 @@ library(Quandl)
 library(sigr)
 library(tidyverse)
 
-
 ## ------------------------------------------------------------------------
-
 # Import data from the EIA Database in Quandl
 wti <- Quandl(code = "CHRIS/ICE_T1", type = "xts")  # West Texas Intermediate Traded Prices
 inv <- Quandl(code = "EIA/STEO_COSXPUS_M", type = "xts")  # U.S. Crude Oil Inventories
@@ -254,5 +252,5 @@ xyplot(resamps, metric = "Rsquared")
 
 
 ## ------------------------------------------------------------------------
-
+purl("supervised-learning-with-eia-data.Rmd")
 
